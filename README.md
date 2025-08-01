@@ -1,5 +1,5 @@
 # TASA_BSDF_tool
-TASA BSDF data convert tool
+A GUI tool for LightTools BSDF data transformation.
 
 
 ## License
