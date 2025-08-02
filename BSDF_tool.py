@@ -28,8 +28,30 @@ def process_data():
         middle = df_flipped.loc[:, (df_flipped.columns > -180) & (df_flipped.columns < -90)]
         right = left.iloc[:,0]
         df_final = pd.concat([left, middle, right], axis=1)
+        
+        if option_var.get():
+            # 對 df_final 中的 0 做四向平均內插（上下左右）
+            df_array = df_final.values.astype(float)
+            rows, cols = df_array.shape
 
+            for i in range(1, rows - 1):
+                for j in range(1, cols - 1):
+                    if df_array[i, j] == 0:
+                        neighbors = [
+                            df_array[i-1, j],  # 上
+                            df_array[i+1, j],  # 下
+                            df_array[i, j-1],  # 左
+                            df_array[i, j+1]   # 右
+                        ]
+                        # 僅當四個鄰居都不為 0 時才內插
+                        if all(val != 0 for val in neighbors):
+                            df_array[i, j] = sum(neighbors) / 4
 
+            # 將內插後的值寫回 DataFrame
+            df_final = pd.DataFrame(df_array, columns=df_final.columns, index=df_final.index)
+        else:
+            pass
+        
         # 選擇輸出檔案路徑
         filepath = filedialog.asksaveasfilename(
             defaultextension=".txt",
@@ -63,8 +85,25 @@ tk.Label(root, text="請貼上原始表格資料：").pack()
 text_input = scrolledtext.ScrolledText(root, height=15)
 text_input.pack(fill=tk.BOTH, padx=10, pady=5, expand=True)
 
-# 執行按鈕
-tk.Button(root, text="🔁 轉換並儲存至檔案", command=process_data, height=2, width=25).pack(pady=10)
+# 建立底部控制區（水平排列按鈕與勾選框）
+bottom_frame = tk.Frame(root)
+bottom_frame.pack(pady=10)
+
+# 轉換按鈕
+convert_btn = tk.Button(bottom_frame, text="🔁 轉換並儲存至檔案", command=process_data, height=2, width=25)
+convert_btn.pack(side=tk.LEFT, padx=10)
+
+# 勾選框變數
+option_var = tk.BooleanVar(value=True)
+
+# 勾選框
+option_check = tk.Checkbutton(
+    bottom_frame,
+    text="排除異常值",
+    variable=option_var
+    # TODO: 在這裡處理勾選與否的功能
+)
+option_check.pack(side=tk.LEFT)
 
 # 啟動 GUI
 root.mainloop()
