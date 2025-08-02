@@ -22,16 +22,9 @@ def process_data():
         row_count = df_flipped.shape[0]  # 新矩陣列數
         col_count = df_flipped.shape[1]  # 新矩陣行數
 
-        # 取得左右兩部分的欄位（根據欄位名稱值進行篩選）
-        df_flipped.columns = df_flipped.columns.astype(float)
-        left = df_flipped.loc[:, df_flipped.columns >= -90]
-        middle = df_flipped.loc[:, (df_flipped.columns > -180) & (df_flipped.columns < -90)]
-        right = left.iloc[:,0]
-        df_final = pd.concat([left, middle, right], axis=1)
-        
         if option_var.get():
-            # 對 df_final 中的 0 做四向平均內插（上下左右）
-            df_array = df_final.values.astype(float)
+            # 對 df_final 中的 0 做四向平均內插（只用非 0 鄰居）
+            df_array = df_flipped.values.astype(float)
             rows, cols = df_array.shape
 
             for i in range(1, rows - 1):
@@ -43,14 +36,23 @@ def process_data():
                             df_array[i, j-1],  # 左
                             df_array[i, j+1]   # 右
                         ]
-                        # 僅當四個鄰居都不為 0 時才內插
-                        if all(val != 0 for val in neighbors):
-                            df_array[i, j] = sum(neighbors) / 4
+                        valid_neighbors = [val for val in neighbors if val != 0]
+                        if valid_neighbors:
+                            df_array[i, j] = sum(valid_neighbors) / len(valid_neighbors)
 
             # 將內插後的值寫回 DataFrame
-            df_final = pd.DataFrame(df_array, columns=df_final.columns, index=df_final.index)
+            df_flipped = pd.DataFrame(df_array, columns=df_flipped.columns, index=df_flipped.index)
         else:
             pass
+
+
+        # 取得左右兩部分的欄位（根據欄位名稱值進行篩選）
+        df_flipped.columns = df_flipped.columns.astype(float)
+        left = df_flipped.loc[:, df_flipped.columns >= -90]
+        middle = df_flipped.loc[:, (df_flipped.columns > -180) & (df_flipped.columns < -90)]
+        right = left.iloc[:,0]
+        df_final = pd.concat([left, middle, right], axis=1)
+        
         
         # 選擇輸出檔案路徑
         filepath = filedialog.asksaveasfilename(
