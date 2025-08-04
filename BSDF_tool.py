@@ -27,8 +27,8 @@ def process_data():
             df_array = df_flipped.values.astype(float)
             rows, cols = df_array.shape
 
-            for i in range(1, rows - 1):
-                for j in range(1, cols - 1):
+            for i in range(0, rows - 1):
+                for j in range(0, cols - 1):
                     if df_array[i, j] == 0:
                         neighbors = [
                             df_array[i-1, j],  # 上
@@ -39,6 +39,7 @@ def process_data():
                         valid_neighbors = [val for val in neighbors if val != 0]
                         if valid_neighbors:
                             df_array[i, j] = sum(valid_neighbors) / len(valid_neighbors)
+                    
                     elif df_array[i, j] < 0:
                         # 對於小於 0 的值，將其設為 0
                         df_array[i, j] = 0
