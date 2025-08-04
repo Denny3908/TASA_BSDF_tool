@@ -39,6 +39,9 @@ def process_data():
                         valid_neighbors = [val for val in neighbors if val != 0]
                         if valid_neighbors:
                             df_array[i, j] = sum(valid_neighbors) / len(valid_neighbors)
+                    elif df_array[i, j] < 0:
+                        # 對於小於 0 的值，將其設為 0
+                        df_array[i, j] = 0
 
             # 將內插後的值寫回 DataFrame
             df_flipped = pd.DataFrame(df_array, columns=df_flipped.columns, index=df_flipped.index)
