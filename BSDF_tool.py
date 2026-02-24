@@ -7,7 +7,6 @@ import re
 import glob
 import numpy as np
 
-
 def lt_folder_to_asap_scan():
     # 讓使用者選資料夾
     folder = filedialog.askdirectory(title="選擇包含 LightTools TXT 的資料夾")
@@ -176,11 +175,15 @@ def process_data():
 
         # 取得左右兩部分的欄位（根據欄位名稱值進行篩選）
         df_flipped.columns = df_flipped.columns.astype(float)
+        
+        # 物理重疊平均：若原始表格同時有 -180 與 180，取平均後存入 180 欄
+        if 180.0 in df_flipped.columns and -180.0 in df_flipped.columns:
+            df_flipped.loc[:, 180.0] = (df_flipped.loc[:, 180.0] + df_flipped.loc[:, -180.0]) / 2.0
+            
         left = df_flipped.loc[:, df_flipped.columns >= -90]
         middle = df_flipped.loc[:, (df_flipped.columns > -180) & (df_flipped.columns < -90)]
         right = left.iloc[:,0]
-        df_final = pd.concat([left, middle, right], axis=1)
-        
+        df_final = pd.concat([left, middle, right], axis=1)        
         
         # 選擇輸出檔案路徑
         filepath = filedialog.asksaveasfilename(
@@ -403,22 +406,52 @@ def _shift_phi_270_to_0(phi: np.ndarray, mat: np.ndarray):
     """
     把 phi=270 平移成新 0：
     phi' = (phi - 270) mod 360
-    之後按 phi' 升冪排序重排欄位
-    並在最後補一欄 360 (= 0 的重複)，讓最小 0 最大 360
+    平移前，若網格同時存在 0° 與 360°，先將兩者取平均以降低邊界雜訊，再剔除 360°。
+    之後按 phi' 升冪排序重排欄位，並在最後補一欄 360° (= 0° 的重複)，讓最小 0 最大 360。
     """
+    # 1. 預處理防呆：將物理同點的 0° 與 360° 資料取平均，再剔除尾端的 360°
+    if np.isclose(phi[-1], 360.0) and np.isclose(phi[0], 0.0):
+        # 將 0° 與 360° 的數值平均，並覆蓋回 0° 的欄位
+        mat[:, 0] = (mat[:, 0] + mat[:, -1]) / 2.0
+        # 剔除 360° 的欄位與軸座標
+        phi = phi[:-1]
+        mat = mat[:, :-1]
+
+    # 2. 平移並取餘數
     phi_shift = (phi - 270.0) % 360.0
+    
+    # 3. 升冪排序
     order = np.argsort(phi_shift)
     phi_sorted = phi_shift[order]
     mat_sorted = mat[:, order]
 
-    # 補 360 欄：複製 phi=0 的那一欄到最後
-    # 由於排序後第一個應該是 0，但保險找最接近 0
+    # 4. 補 360° 欄：複製 phi=0 的那一欄到最後，確保邊界閉合
     idx0 = int(np.argmin(np.abs(phi_sorted - 0.0)))
     col0 = mat_sorted[:, idx0:idx0+1]
 
     phi_out = np.concatenate([phi_sorted, np.array([360.0])])
     mat_out = np.concatenate([mat_sorted, col0], axis=1)
-    return phi_out, mat_out
+    
+    return phi_out, mat_out    
+def _fold_phi_to_180(phi: np.ndarray, mat: np.ndarray):
+    """
+    將 0~360 的矩陣，以 180 度為對稱軸進行左右平均。
+    回傳：0~180 的 phi 軸與平均後的矩陣。
+    """
+    # 擷取 <= 180 的有效索引
+    valid_idx = np.where(phi <= 180.0)[0]
+    phi_180 = phi[valid_idx]
+    mat_180 = np.zeros((mat.shape[0], len(phi_180)))
+
+    for i, p in enumerate(phi_180):
+        p_sym = 360.0 - p
+        # 使用 np.argmin 尋找最接近對稱角度的索引，避免浮點數誤差導致找不到
+        idx_sym = np.argmin(np.abs(phi - p_sym))
+        
+        # 左右對稱平均
+        mat_180[:, i] = (mat[:, i] + mat[:, idx_sym]) / 2.0
+
+    return phi_180, mat_180
 
 def lt_folder_to_asap_merge():
     # 1) 選資料夾
@@ -459,7 +492,7 @@ def lt_folder_to_asap_merge():
     if not save_path:
         return
 
-    # 6) 逐 AOI 讀矩陣 + 建軸 + shift phi + theta 反轉
+    # 6) 逐 AOI 讀矩陣 + 建軸 + shift phi + 對稱平均 + theta 處理
     blocks = []
     theta_ref = None
     phi_ref = None
@@ -469,13 +502,18 @@ def lt_folder_to_asap_merge():
         mat = _clean_matrix(mat, exclude_abnormal=option_var.get())
 
         theta, phi = _build_theta_phi_axes(mat)
+        
+        # 轉到 0~360
         phi_out, mat_out = _shift_phi_270_to_0(phi, mat)
+        
+        # 將 0~360 折疊並左右平均為 0~180
+        phi_out, mat_out = _fold_phi_to_180(phi_out, mat_out)
 
-        # Theta 順序顛倒（90 -> 0）
-        theta_out = theta
+        # 依原設定：Theta 順序維持，僅矩陣列顛倒
+        theta_out = theta 
         mat_out = mat_out[::-1, :]
 
-        # 檢查軸一致（合併檔通常必須一致）
+        # 檢查軸一致
         if theta_ref is None:
             theta_ref = theta_out
             phi_ref = phi_out

@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *.pyo
+.venv/
 
 # VSCode / IDE 設定
 .vscode/
